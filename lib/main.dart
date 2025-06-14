@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 👈 add this
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/task.dart';
 import 'screens/chat_assistant_screen.dart';
@@ -9,51 +10,49 @@ import 'widgets/topbar.dart';
 import 'theme/app_theme.dart';
 import 'screens/create_task_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 👇 Load .env
+  await dotenv.load(fileName: ".env");
+
+  // 👇 Get values from .env
+  final supabaseUrl = dotenv.env['SUPABASE_URL']!;
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY']!;
+
   await Supabase.initialize(
-    url: 'https://yyndpmmgegvfpqkxovnb.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5bmRwbW1nZWd2ZnBxa3hvdm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNzA0MzUsImV4cCI6MjA2Mzk0NjQzNX0.VVSxMEmd6yxc1CxIS2hPPjfNMAKobrq3Un9e0-TpZFU',
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
-  runApp(FocusTimeApp());
+  runApp(RiseAIApp());
 }
 
-class FocusTimeApp extends StatelessWidget {
+class RiseAIApp extends StatelessWidget {
   final supabase = Supabase.instance.client;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: supabase.auth.onAuthStateChange,
-      builder: (context, snapshot) {
-        final session = supabase.auth.currentSession;
+    final session = supabase.auth.currentSession;
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
-        }
-        
-        return MaterialApp(
-          title: 'FocusTime',
-          theme: appTheme,
-          routes: {
-            '/login': (_) => const LoginScreen(),
-            '/chat': (_) => ChatAssistantScreen(),
-            '/calendar': (_) => CalendarScreen(),
-          },
-          onGenerateRoute: (settings) {
-            if (settings.name == '/create') {
-              final task = settings.arguments as Task?;
-              return MaterialPageRoute(
-                builder: (_) => CreateTaskScreen(task: task),
-              );
-            }
-            return null;
-          },
-          home: session != null ? MainLayout() : const LoginScreen(),
-        );
+    return MaterialApp(
+      title: 'RiseAI',
+      theme: appTheme,
+      routes: {
+        '/login': (_) => const LoginScreen(),
+        '/chat': (_) => ChatAssistantScreen(),
+        '/calendar': (_) => CalendarScreen(),
       },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/create') {
+          final task = settings.arguments as Task?;
+          return MaterialPageRoute(
+            builder: (_) => CreateTaskScreen(task: task),
+          );
+        }
+        return null;
+      },
+      home: session != null ? MainLayout() : const LoginScreen(),
     );
   }
 }

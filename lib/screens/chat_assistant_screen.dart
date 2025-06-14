@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
+import '../widgets/chat_bubble.dart';
 import 'dart:convert';
 import 'create_task_screen.dart';
 import '../services/task_service.dart';
 import '../models/task.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ChatAssistantScreen extends StatefulWidget {
   @override
@@ -27,17 +29,13 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
   void initState() {
     super.initState();
     final user = supabase.auth.currentUser;
-    if (user == null) {
-      // Handle auth error here
-      return;
-    }
+    if (user == null) return;
     userId = user.id;
     _loadInitialTasksMessage();
   }
 
   Future<void> _loadInitialTasksMessage() async {
     final history = await loadChatHistory();
-
     setState(() {
       _messages.addAll(history.map((m) => {
         'role': m['role'],
@@ -53,12 +51,9 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
       final isSameDay = task.startTime.day == today.day &&
                         task.startTime.month == today.month &&
                         task.startTime.year == today.year;
-
       if (isSameDay) return true;
-
       if (task.isRepeating && task.repeatFrequency != null && task.repeatInterval != null) {
         final daysDifference = today.difference(task.startTime).inDays;
-
         if (task.repeatFrequency == 'daily') {
           return daysDifference % task.repeatInterval! == 0;
         } else if (task.repeatFrequency == 'weekly') {
@@ -66,23 +61,19 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
                  task.startTime.weekday == today.weekday;
         }
       }
-
       return false;
     }).toList();
 
     if (todayTasks.isNotEmpty) {
       todayTasks.sort((a, b) => a.startTime.compareTo(b.startTime));
-
       final display = "Here are your tasks for today:";
       final rawData = jsonEncode(todayTasks.map((t) => t.toJson()).toList());
-
       setState(() {
         _messages.insert(0, {
           'role': 'assistant',
           'content': display,
           'raw_data': rawData,
         });
-
         _currentTasks = todayTasks.map((t) => {
           'title': t.title,
           'start_time': t.startTime.toIso8601String(),
@@ -156,7 +147,7 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
       .eq('user_id', userId)
       .order('created_at', ascending: true)
       .limit(20);
-  
+
     return history.map<Map<String, dynamic>>((m) => {
       'role': m['role'],
       'content': m['content'],
@@ -169,9 +160,7 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
       _messages.add({'role': 'user', 'content': userMessage});
       _isLoading = true;
     });
-
     _scrollToBottom();
-
     await supabase.from('chat_messages').insert({
       'user_id': userId,
       'role': 'user',
@@ -180,30 +169,19 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
 
     final tasks = await TaskService.instance.getTasks();
     final taskListJson = formatTasksWithMetadata(tasks);
-    
     final history = await loadChatHistory();
-
     final systemMessage = buildSystemMessage(taskListJson);
 
     final gptMessages = [
-      {
-        'role': 'system',
-        'content': systemMessage,
-      },
-      ...history.map((m) => {
-        'role': m['role'],
-        'content': m['content'],
-      }),
-      {
-        'role': 'user',
-        'content': userMessage,
-      }
+      {'role': 'system', 'content': systemMessage},
+      ...history.map((m) => {'role': m['role'], 'content': m['content']}),
+      {'role': 'user', 'content': userMessage},
     ];
 
     final response = await http.post(
       Uri.parse('https://api.openai.com/v1/chat/completions'),
       headers: {
-        'Authorization': '',
+        'Authorization': 'Bearer ${dotenv.env['OPENAI_API_KEY']}',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -215,22 +193,18 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final reply = data['choices'][0]['message']['content'];
-
       String display = '';
       dynamic rawTasks;
-
       try {
         final decoded = jsonDecode(reply);
         display = decoded['display'] ?? reply;
         rawTasks = decoded['data'] ?? [];
-
         setState(() {
           _messages.add({
             'role': 'assistant',
             'content': display,
             'raw_data': jsonEncode(rawTasks),
           });
-
           _isLoading = false;
         });
         _scrollToBottom();
@@ -245,62 +219,44 @@ class _ChatAssistantScreenState extends State<ChatAssistantScreen> {
         'role': 'assistant',
         'content': display,
         'raw_data': jsonEncode(rawTasks),
-
       });
     } else {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to get response from ChatGPT')),
       );
     }
-
     if (mounted) _controller.clear();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Chat Assistant'),
-      ),
+      appBar: AppBar(title: Text('Chat Assistant')),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
               itemCount: _messages.length,
-              itemBuilder: (_, index) {
+              itemBuilder: (context, index) {
                 final msg = _messages[index];
                 final isUser = msg['role'] == 'user';
-
                 return Column(
                   crossAxisAlignment:
                       isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                      margin: EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                      child: Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isUser ? Colors.indigo[200] : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(msg['content'] ?? ''),
-                      ),
+                    ChatBubble(
+                      message: msg['content'],
+                      isUser: isUser,
                     ),
-
                     if (!isUser && msg.containsKey('raw_data')) ...[
                       for (final task in jsonDecode(msg['raw_data'] ?? '[]'))
                         Builder(builder: (_) {
                           final isAlreadyInList = _currentTasks.any((t) =>
                             t['title'] == task['title'] &&
                             t['start_time'] == task['start_time'] &&
-                            t['end_time'] == task['end_time']
-                          );
-
+                            t['end_time'] == task['end_time']);
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4),
                             child: isAlreadyInList

@@ -15,7 +15,7 @@ class Sidebar extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          DrawerHeader(child: Text('FocusTime', style: TextStyle(fontSize: 24))),
+          DrawerHeader(child: Text('RiseAI', style: TextStyle(fontSize: 24))),
           _buildNavItem('Calendar', 'calendar'),
           _buildNavItem('Chat Assistant', 'chat'),
         ],
